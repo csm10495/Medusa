@@ -1,13 +1,13 @@
 name: API tests
 
-on: [pull_request]
+on: push
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.9]
+        python-version: [3.9, 3.10, 3.11]
         node-version: [14.x]
 
     steps:
