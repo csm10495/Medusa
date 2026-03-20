@@ -180,6 +180,64 @@ def _check_torrent_file_ignore_regex(content, result_name):
     return False
 
 
+def _try_get_torrent_content_for_magnet(result):
+    """Try to download torrent content for a magnet link via bt_cache_urls.
+
+    Uses the provider's bt_cache_urls to attempt downloading the .torrent file
+    from a torrent cache service using the info hash extracted from the magnet URI.
+
+    :param result: SearchResult with a magnet URL
+    :return: torrent content bytes, or None if resolution failed
+    """
+    from bencodepy import BencodeDecodeError, DEFAULT as BENCODE
+
+    provider = result.provider
+    if not hasattr(provider, 'bt_cache_urls') or not provider.bt_cache_urls:
+        return None
+
+    if not hasattr(provider, '_get_info_from_magnet'):
+        return None
+
+    info_hash = provider._get_info_from_magnet(result.url)
+    if not info_hash:
+        log.debug('Unable to extract info hash from magnet for file ignore check: {name}',
+                  {'name': result.name})
+        return None
+
+    for cache_url_template in provider.bt_cache_urls:
+        try:
+            cache_url = cache_url_template.format(
+                info_hash=info_hash,
+                torrent_name=result.name
+            )
+        except (KeyError, IndexError):
+            continue
+
+        try:
+            content = provider.session.get_content(cache_url, timeout=10)
+            if content:
+                # Verify it's valid torrent data
+                try:
+                    meta_info = BENCODE.decode(content, allow_extra_data=True)
+                    info = meta_info.get('info') or meta_info.get(b'info')
+                    if info:
+                        log.debug(
+                            'Resolved magnet to torrent via cache for file ignore check: {name}',
+                            {'name': result.name}
+                        )
+                        return content
+                except (BencodeDecodeError, Exception):
+                    pass
+        except Exception:
+            continue
+
+    log.debug(
+        'Could not resolve magnet to torrent via cache for file ignore check: {name}',
+        {'name': result.name}
+    )
+    return None
+
+
 def snatch_result(result):
     """
     Snatch a result that has been found.
@@ -232,12 +290,17 @@ def snatch_result(result):
 
     # Torrents can be sent to clients or saved to disk
     elif result.result_type == u'torrent':
-        # Check torrent files against ignore regexes (only for non-magnet torrents)
-        if app.TORRENT_FILE_IGNORE_REGEX and not result.url.startswith(u'magnet:'):
-            if not result.content:
+        # Check torrent files against ignore regexes
+        if app.TORRENT_FILE_IGNORE_REGEX:
+            torrent_content = result.content
+            if not torrent_content and not result.url.startswith(u'magnet:'):
                 if result.provider.login():
-                    result.content = result.provider.get_content(result.url)
-            if _check_torrent_file_ignore_regex(result.content, result.name):
+                    torrent_content = result.provider.get_content(result.url)
+                    result.content = torrent_content
+            elif not torrent_content and result.url.startswith(u'magnet:'):
+                # Try to resolve magnet to torrent via bt_cache_urls
+                torrent_content = _try_get_torrent_content_for_magnet(result)
+            if _check_torrent_file_ignore_regex(torrent_content, result.name):
                 return False
 
         # torrents are saved to disk when blackhole mode

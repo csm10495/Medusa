@@ -6,7 +6,13 @@ import logging
 
 from bencodepy import DEFAULT as BENCODE
 
-from medusa.search.core import _check_torrent_file_ignore_regex, _get_torrent_file_list
+from medusa.search.core import (
+    _check_torrent_file_ignore_regex,
+    _get_torrent_file_list,
+    _try_get_torrent_content_for_magnet,
+)
+
+from mock.mock import Mock, patch
 
 import pytest
 
@@ -105,14 +111,25 @@ class TestGetTorrentFileList(object):
         content = BENCODE.encode({b'comment': b'no info here'})
         assert _get_torrent_file_list(content) == []
 
-    def test_empty_files_list(self):
-        """Torrent with empty files list should return an empty list."""
+    def test_empty_files_list_falls_back_to_name(self):
+        """Torrent with empty files list should fall back to name field."""
         content = BENCODE.encode({
             b'info': {
-                b'name': b'EmptyTorrent',
+                b'name': b'FallbackName',
                 b'piece length': 262144,
                 b'pieces': b'x' * 20,
                 b'files': [],
+            }
+        })
+        # Empty files list is falsy, so it falls back to the name field
+        assert _get_torrent_file_list(content) == ['FallbackName']
+
+    def test_no_name_no_files(self):
+        """Torrent with no name and no files should return an empty list."""
+        content = BENCODE.encode({
+            b'info': {
+                b'piece length': 262144,
+                b'pieces': b'x' * 20,
             }
         })
         assert _get_torrent_file_list(content) == []
@@ -235,3 +252,163 @@ def test_check_torrent_file_ignore_regex(p, app_config, caplog):
 
     # Then
     assert actual == p['expected']
+
+
+# ---- Tests for _try_get_torrent_content_for_magnet ----
+
+class TestTryGetTorrentContentForMagnet(object):
+    """Tests for _try_get_torrent_content_for_magnet."""
+
+    MAGNET_URL = 'magnet:?xt=urn:btih:AB123456789012345678901234567890ABCDEF01&dn=Test.Show.S01E01'
+
+    def _make_mock_result(self, url=None, bt_cache_urls=None, content_response=None):
+        """Create a mock search result with a provider."""
+        from medusa.providers.torrent.torrent_provider import TorrentProvider
+
+        result = Mock()
+        result.url = url or self.MAGNET_URL
+        result.name = 'Test.Show.S01E01'
+
+        provider = Mock(spec=TorrentProvider)
+        provider.bt_cache_urls = bt_cache_urls or [
+            'https://cache1.example.com/{info_hash}.torrent',
+            'https://cache2.example.com/{info_hash}.torrent',
+        ]
+        provider._get_info_from_magnet = TorrentProvider._get_info_from_magnet
+
+        mock_session = Mock()
+        mock_session.get_content = Mock(return_value=content_response)
+        provider.session = mock_session
+
+        result.provider = provider
+        return result
+
+    def test_successful_resolution(self):
+        """Magnet resolved via first cache URL returns valid torrent content."""
+        torrent_content = _make_multi_file_torrent([
+            [b'Show.S01E01.mkv'],
+            [b'setup.exe'],
+        ])
+        result = self._make_mock_result(content_response=torrent_content)
+
+        content = _try_get_torrent_content_for_magnet(result)
+
+        assert content is not None
+        files = _get_torrent_file_list(content)
+        assert 'setup.exe' in files
+
+    def test_no_bt_cache_urls(self):
+        """No bt_cache_urls returns None."""
+        result = self._make_mock_result(bt_cache_urls=[])
+
+        content = _try_get_torrent_content_for_magnet(result)
+
+        assert content is None
+
+    def test_invalid_torrent_content_from_cache(self):
+        """Invalid content from cache is rejected."""
+        result = self._make_mock_result(content_response=b'<html>not a torrent</html>')
+
+        content = _try_get_torrent_content_for_magnet(result)
+
+        assert content is None
+
+    def test_none_content_from_cache(self):
+        """None response from cache returns None."""
+        result = self._make_mock_result(content_response=None)
+
+        content = _try_get_torrent_content_for_magnet(result)
+
+        assert content is None
+
+    def test_cache_url_format_with_info_hash(self):
+        """Cache URL is formatted with the correct info hash."""
+        torrent_content = _make_single_file_torrent(b'Show.S01E01.mkv')
+        result = self._make_mock_result(content_response=torrent_content)
+
+        _try_get_torrent_content_for_magnet(result)
+
+        # Verify session.get_content was called with a formatted URL containing the hash
+        call_args = result.provider.session.get_content.call_args
+        called_url = call_args[0][0]
+        assert 'AB123456789012345678901234567890ABCDEF01' in called_url
+
+    def test_no_info_hash_in_magnet(self):
+        """Magnet without info hash returns None."""
+        result = self._make_mock_result(url='magnet:?dn=NoHash')
+
+        content = _try_get_torrent_content_for_magnet(result)
+
+        assert content is None
+
+    def test_provider_without_bt_cache_urls_attr(self):
+        """Provider without bt_cache_urls attribute returns None."""
+        result = Mock()
+        result.url = self.MAGNET_URL
+        result.name = 'Test'
+        result.provider = Mock(spec=[])  # Empty spec = no attributes
+
+        content = _try_get_torrent_content_for_magnet(result)
+
+        assert content is None
+
+    def test_first_cache_fails_second_succeeds(self):
+        """If first cache returns invalid data, second cache is tried."""
+        torrent_content = _make_single_file_torrent(b'Show.S01E01.mkv')
+
+        result = self._make_mock_result()
+        # First call returns invalid data, second returns valid
+        result.provider.session.get_content = Mock(
+            side_effect=[b'invalid data', torrent_content]
+        )
+
+        content = _try_get_torrent_content_for_magnet(result)
+
+        assert content is not None
+        assert _get_torrent_file_list(content) == ['Show.S01E01.mkv']
+        assert result.provider.session.get_content.call_count == 2
+
+    def test_all_caches_fail(self):
+        """If all caches fail, returns None."""
+        result = self._make_mock_result()
+        result.provider.session.get_content = Mock(side_effect=Exception('Connection error'))
+
+        content = _try_get_torrent_content_for_magnet(result)
+
+        assert content is None
+
+    def test_integration_magnet_with_ignore_regex(self, app_config, caplog):
+        """End-to-end: magnet resolved via cache is checked against ignore regex."""
+        caplog.set_level(logging.DEBUG, logger='medusa')
+
+        app_config('TORRENT_FILE_IGNORE_REGEX', [r'\.exe$'])
+
+        torrent_content = _make_multi_file_torrent([
+            [b'Show.S01E01.mkv'],
+            [b'sneaky.exe'],
+        ])
+        result = self._make_mock_result(content_response=torrent_content)
+
+        content = _try_get_torrent_content_for_magnet(result)
+        assert content is not None
+
+        should_ignore = _check_torrent_file_ignore_regex(content, result.name)
+        assert should_ignore is True
+
+    def test_integration_magnet_clean_torrent(self, app_config, caplog):
+        """End-to-end: magnet resolved via cache passes when no files match."""
+        caplog.set_level(logging.DEBUG, logger='medusa')
+
+        app_config('TORRENT_FILE_IGNORE_REGEX', [r'\.exe$'])
+
+        torrent_content = _make_multi_file_torrent([
+            [b'Show.S01E01.mkv'],
+            [b'Show.S01E01.nfo'],
+        ])
+        result = self._make_mock_result(content_response=torrent_content)
+
+        content = _try_get_torrent_content_for_magnet(result)
+        assert content is not None
+
+        should_ignore = _check_torrent_file_ignore_regex(content, result.name)
+        assert should_ignore is False
