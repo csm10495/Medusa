@@ -106,6 +106,14 @@
                                         results must include at least one word from this list
                                     </config-template>
 
+                                    <config-template label-for="torrent_file_ignore_regex" label="Ignore torrents with files matching regex">
+                                        <select-list name="torrent_file_ignore_regex" id="torrent_file_ignore_regex" :list-items="search.filters.torrentFileIgnoreRegex" @change="search.filters.torrentFileIgnoreRegex = $event.map(x => x.value)" />
+                                        Torrents containing files that match any of these Python-style regexes will be skipped <br>
+                                        Example: "\.exe$" will ignore torrents containing .exe files <br>
+                                        Supports lookaheads and lookbehinds (e.g. "^(?!RARBG-DONOT-MIRROR\.exe$).+\.exe$") <br>
+                                        Note: Does not apply to magnet links (file list unavailable until download starts)
+                                    </config-template>
+
                                     <config-template label-for="ignored_subs_list" label="Ignore language names in subbed results">
                                         <select-list name="ignored_subs_list" id="ignored_subs_list" :list-items="search.filters.ignoredSubsList" @change="search.filters.ignoredSubsList = $event.map(x => x.value)" />
                                         Ignore subbed releases based on language names <br>

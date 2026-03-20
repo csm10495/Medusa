@@ -51,7 +51,7 @@ class ConfigSearch(Config):
                    torrent_rpcurl=None, torrent_auth_type=None, ignore_words=None, download_handler_frequency=None,
                    preferred_words=None, undesired_words=None, trackers_list=None, require_words=None,
                    ignored_subs_list=None, ignore_und_subs=None, cache_trimming=None, max_cache_age=None,
-                   torrent_seed_location=None):
+                   torrent_seed_location=None, torrent_file_ignore_regex=None):
         """
         Save Search related settings
         """
@@ -88,6 +88,7 @@ class ConfigSearch(Config):
         app.UNDESIRED_WORDS = [_.strip() for _ in undesired_words.split(',')] if undesired_words else []
         app.TRACKERS_LIST = [_.strip() for _ in trackers_list.split(',')] if trackers_list else []
         app.REQUIRE_WORDS = [_.strip() for _ in require_words.split(',')] if require_words else []
+        app.TORRENT_FILE_IGNORE_REGEX = [_.strip() for _ in torrent_file_ignore_regex.split(',')] if torrent_file_ignore_regex else []
         app.IGNORED_SUBS_LIST = [_.strip() for _ in ignored_subs_list.split(',')] if ignored_subs_list else []
         app.IGNORE_UND_SUBS = config.checkbox_to_value(ignore_und_subs)
 

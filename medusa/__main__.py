@@ -996,6 +996,7 @@ class Application(object):
             app.UNDESIRED_WORDS = check_setting_list(app.CFG, 'General', 'undesired_words', app.UNDESIRED_WORDS)
             app.TRACKERS_LIST = check_setting_list(app.CFG, 'General', 'trackers_list', app.TRACKERS_LIST)
             app.REQUIRE_WORDS = check_setting_list(app.CFG, 'General', 'require_words', app.REQUIRE_WORDS)
+            app.TORRENT_FILE_IGNORE_REGEX = check_setting_list(app.CFG, 'General', 'torrent_file_ignore_regex', app.TORRENT_FILE_IGNORE_REGEX)
             app.IGNORED_SUBS_LIST = check_setting_list(app.CFG, 'General', 'ignored_subs_list', app.IGNORED_SUBS_LIST)
             app.IGNORE_UND_SUBS = bool(check_setting_int(app.CFG, 'General', 'ignore_und_subs', app.IGNORE_UND_SUBS))
 
@@ -1742,6 +1743,7 @@ class Application(object):
         new_config['General']['undesired_words'] = app.UNDESIRED_WORDS
         new_config['General']['trackers_list'] = app.TRACKERS_LIST
         new_config['General']['require_words'] = app.REQUIRE_WORDS
+        new_config['General']['torrent_file_ignore_regex'] = app.TORRENT_FILE_IGNORE_REGEX
         new_config['General']['ignored_subs_list'] = app.IGNORED_SUBS_LIST
         new_config['General']['ignore_und_subs'] = app.IGNORE_UND_SUBS
         new_config['General']['calendar_unprotected'] = int(app.CALENDAR_UNPROTECTED)

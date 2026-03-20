@@ -9,6 +9,7 @@ import itertools
 import logging
 import operator
 import os
+import re
 import threading
 import time
 
@@ -102,6 +103,76 @@ def _download_result(result):
     return new_result
 
 
+def _get_torrent_file_list(content):
+    """Extract file paths from torrent content bytes.
+
+    :param content: Raw torrent file content (bytes)
+    :return: list of file path strings within the torrent
+    """
+    from bencodepy import BencodeDecodeError, DEFAULT as BENCODE
+
+    try:
+        torrent_bdecode = BENCODE.decode(content, allow_extra_data=True)
+        info = torrent_bdecode.get(b'info', {})
+    except (BencodeDecodeError, Exception):
+        return []
+
+    files = []
+    if b'files' in info:
+        for f in info[b'files']:
+            path_parts = f.get(b'path', [])
+            decoded_parts = []
+            for part in path_parts:
+                if isinstance(part, bytes):
+                    decoded_parts.append(part.decode('utf-8', errors='replace'))
+                else:
+                    decoded_parts.append(str(part))
+            if decoded_parts:
+                files.append(os.path.join(*decoded_parts))
+    elif b'name' in info:
+        name = info[b'name']
+        if isinstance(name, bytes):
+            name = name.decode('utf-8', errors='replace')
+        files.append(name)
+
+    return files
+
+
+def _check_torrent_file_ignore_regex(content, result_name):
+    """Check if torrent content contains files matching any ignore regex.
+
+    :param content: Raw torrent file content (bytes)
+    :param result_name: Name of the search result (for logging)
+    :return: True if torrent should be ignored, False otherwise
+    """
+    if not app.TORRENT_FILE_IGNORE_REGEX or not content:
+        return False
+
+    files = _get_torrent_file_list(content)
+    if not files:
+        return False
+
+    for pattern in app.TORRENT_FILE_IGNORE_REGEX:
+        try:
+            compiled = re.compile(pattern)
+        except re.error as error:
+            log.warning(
+                'Invalid torrent file ignore regex pattern: {pattern}. Error: {error}',
+                {'pattern': pattern, 'error': error}
+            )
+            continue
+
+        for file_path in files:
+            if compiled.search(file_path):
+                log.debug(
+                    'Torrent {name} contains file "{file}" matching ignore regex "{regex}", skipping',
+                    {'name': result_name, 'file': file_path, 'regex': pattern}
+                )
+                return True
+
+    return False
+
+
 def snatch_result(result):
     """
     Snatch a result that has been found.
@@ -154,6 +225,14 @@ def snatch_result(result):
 
     # Torrents can be sent to clients or saved to disk
     elif result.result_type == u'torrent':
+        # Check torrent files against ignore regexes (only for non-magnet torrents)
+        if app.TORRENT_FILE_IGNORE_REGEX and not result.url.startswith(u'magnet:'):
+            if not result.content:
+                if result.provider.login():
+                    result.content = result.provider.get_content(result.url)
+            if _check_torrent_file_ignore_regex(result.content, result.name):
+                return False
+
         # torrents are saved to disk when blackhole mode
         # Handle SAVE_MAGNET_FILE
         if app.TORRENT_METHOD == u'blackhole':
