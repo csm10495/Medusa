@@ -28,7 +28,8 @@ const state = {
             'swe'
         ],
         required: [],
-        preferred: []
+        preferred: [],
+        ignoreTorrentsWithFileRegex: []
     },
     general: {
         minDailySearchFrequency: 10,

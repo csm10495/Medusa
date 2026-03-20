@@ -122,8 +122,43 @@ class TorrentProvider(GenericProvider):
 
         return title, download_url
 
+    def _get_torrent_files_list(self, meta_info):
+        """
+        Extract list of filenames from torrent metadata.
+
+        :param meta_info: Decoded torrent metadata dictionary
+        :returns: List of file paths in the torrent
+        """
+        if not meta_info or 'info' not in meta_info:
+            return []
+
+        info = meta_info['info']
+        files = []
+
+        try:
+            # Single file torrent
+            if b'name' in info and b'files' not in info:
+                name = info[b'name'].decode('utf-8', errors='ignore')
+                files.append(name)
+            # Multi-file torrent
+            elif b'files' in info:
+                # Get the root directory name
+                root_name = info.get(b'name', b'').decode('utf-8', errors='ignore')
+
+                for file_info in info[b'files']:
+                    # Path is a list of directory/file components
+                    if b'path' in file_info:
+                        path_parts = [p.decode('utf-8', errors='ignore') for p in file_info[b'path']]
+                        # Join with forward slash for consistent path representation
+                        file_path = '/'.join(path_parts)
+                        files.append(file_path)
+        except (KeyError, AttributeError, UnicodeDecodeError) as error:
+            log.debug('Error extracting file list from torrent metadata: {error}', {'error': error})
+
+        return files
+
     def _verify_download(self, file_path):
-        """Validate torrent file."""
+        """Validate torrent file and check against ignore regex patterns."""
         if not file_path or not os.path.isfile(file_path):
             return False
 
@@ -131,7 +166,40 @@ class TorrentProvider(GenericProvider):
             with open(file_path, 'rb') as f:
                 # `bencodepy` is monkeypatched in `medusa.init`
                 meta_info = BENCODE.decode(f.read(), allow_extra_data=True)
-            return 'info' in meta_info and meta_info['info']
+
+            if not ('info' in meta_info and meta_info['info']):
+                remove_file_failed(file_path)
+                log.debug('{result} is not a valid torrent file',
+                          {'result': file_path})
+                return False
+
+            # Check if any files in the torrent match the ignore regex patterns
+            if app.IGNORE_TORRENTS_WITH_FILE_REGEX:
+                torrent_files = self._get_torrent_files_list(meta_info)
+
+                for regex_pattern in app.IGNORE_TORRENTS_WITH_FILE_REGEX:
+                    if not regex_pattern:  # Skip empty patterns
+                        continue
+
+                    try:
+                        compiled_pattern = re.compile(regex_pattern)
+                        for file_name in torrent_files:
+                            if compiled_pattern.search(file_name):
+                                log.debug(
+                                    'Ignoring torrent {torrent} - file {file} matches ignore pattern: {pattern}',
+                                    {'torrent': os.path.basename(file_path), 'file': file_name, 'pattern': regex_pattern}
+                                )
+                                remove_file_failed(file_path)
+                                return False
+                    except re.error as error:
+                        log.warning(
+                            'Invalid regex pattern {pattern}: {error}',
+                            {'pattern': regex_pattern, 'error': error}
+                        )
+                        continue
+
+            return True
+
         except BencodeDecodeError as error:
             log.debug('Failed to validate torrent file: {name}. Error: {error}',
                       {'name': file_path, 'error': error})

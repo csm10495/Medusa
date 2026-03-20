@@ -308,6 +308,7 @@ class ConfigHandler(BaseRequestHandler):
         'search.filters.undesired': ListField(app, 'UNDESIRED_WORDS'),
         'search.filters.preferred': ListField(app, 'PREFERRED_WORDS'),
         'search.filters.required': ListField(app, 'REQUIRE_WORDS'),
+        'search.filters.ignoreTorrentsWithFileRegex': ListField(app, 'IGNORE_TORRENTS_WITH_FILE_REGEX'),
         'search.filters.ignoredSubsList': ListField(app, 'IGNORED_SUBS_LIST'),
         'search.filters.ignoreUnknownSubs': BooleanField(app, 'IGNORE_UND_SUBS'),
 

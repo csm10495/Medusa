@@ -665,6 +665,7 @@ class MedusaApp(object):
         ]
 
         self.REQUIRE_WORDS = []
+        self.IGNORE_TORRENTS_WITH_FILE_REGEX = []
         self.IGNORED_SUBS_LIST = ['dk', 'fin', 'heb', 'kor', 'nor', 'nordic', 'pl', 'swe']
         self.IGNORE_UND_SUBS = False
         self.SYNC_FILES = ['!sync', 'lftp-pget-status', 'part', 'bts', '!qb', '!qB']

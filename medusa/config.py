@@ -1238,6 +1238,7 @@ class ConfigMigrator(object):
         app.UNDESIRED_WORDS = convert_csv_string_to_list(self.config_obj['General']['undesired_words'])
         app.TRACKERS_LIST = convert_csv_string_to_list(self.config_obj['General']['trackers_list'])
         app.REQUIRE_WORDS = convert_csv_string_to_list(self.config_obj['General']['require_words'])
+        app.IGNORE_TORRENTS_WITH_FILE_REGEX = convert_csv_string_to_list(self.config_obj['General']['ignore_torrents_with_file_regex'])
         app.IGNORED_SUBS_LIST = convert_csv_string_to_list(self.config_obj['General']['ignored_subs_list'])
         app.BROKEN_PROVIDERS = convert_csv_string_to_list(self.config_obj['General']['broken_providers'])
         app.EXTRA_SCRIPTS = convert_csv_string_to_list(self.config_obj['General']['extra_scripts'], '|')
