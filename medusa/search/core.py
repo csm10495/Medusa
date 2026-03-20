@@ -152,16 +152,17 @@ def _check_torrent_file_ignore_regex(content, result_name):
     if not files:
         return False
 
+    compiled_patterns = []
     for pattern in app.TORRENT_FILE_IGNORE_REGEX:
         try:
-            compiled = re.compile(pattern)
+            compiled_patterns.append((re.compile(pattern), pattern))
         except re.error as error:
             log.warning(
                 'Invalid torrent file ignore regex pattern: {pattern}. Error: {error}',
                 {'pattern': pattern, 'error': error}
             )
-            continue
 
+    for compiled, pattern in compiled_patterns:
         for file_path in files:
             if compiled.search(file_path):
                 log.debug(

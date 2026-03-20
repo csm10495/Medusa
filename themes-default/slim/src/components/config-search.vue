@@ -110,7 +110,7 @@
                                         <select-list name="torrent_file_ignore_regex" id="torrent_file_ignore_regex" :list-items="search.filters.torrentFileIgnoreRegex" @change="search.filters.torrentFileIgnoreRegex = $event.map(x => x.value)" />
                                         Torrents containing files that match any of these Python-style regexes will be skipped <br>
                                         Example: "\.exe$" will ignore torrents containing .exe files <br>
-                                        Supports lookaheads and lookbehinds (e.g. "^(?!RARBG-DONOT-MIRROR\.exe$).+\.exe$") <br>
+                                        Advanced: "^(?!RARBG-DONOT-MIRROR\.exe$).+\.exe$" ignores all .exe except a specific one <br>
                                         Note: Does not apply to magnet links (file list unavailable until download starts)
                                     </config-template>
 
