@@ -111,7 +111,7 @@
                                         Torrents containing files that match any of these Python-style regexes will be skipped <br>
                                         Example: "\.exe$" will ignore torrents containing .exe files <br>
                                         Advanced: "^(?!RARBG-DONOT-MIRROR\.exe$).+\.exe$" ignores all .exe except a specific one <br>
-                                        Note: Does not apply to magnet links (file list unavailable until download starts)
+                                        Note: For magnet links, resolution via torrent cache is attempted. If unavailable, the check is skipped.
                                     </config-template>
 
                                     <config-template label-for="ignored_subs_list" label="Ignore language names in subbed results">

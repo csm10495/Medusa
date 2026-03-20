@@ -292,14 +292,18 @@ def snatch_result(result):
     elif result.result_type == u'torrent':
         # Check torrent files against ignore regexes
         if app.TORRENT_FILE_IGNORE_REGEX:
-            torrent_content = result.content
-            if not torrent_content and not result.url.startswith(u'magnet:'):
+            if result.content:
+                torrent_content = result.content
+            elif result.url.startswith(u'magnet:'):
+                # Try to resolve magnet to torrent via bt_cache_urls
+                torrent_content = _try_get_torrent_content_for_magnet(result)
+            else:
+                # Regular torrent URL - download content
                 if result.provider.login():
                     torrent_content = result.provider.get_content(result.url)
                     result.content = torrent_content
-            elif not torrent_content and result.url.startswith(u'magnet:'):
-                # Try to resolve magnet to torrent via bt_cache_urls
-                torrent_content = _try_get_torrent_content_for_magnet(result)
+                else:
+                    torrent_content = None
             if _check_torrent_file_ignore_regex(torrent_content, result.name):
                 return False
 

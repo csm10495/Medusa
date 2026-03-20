@@ -259,7 +259,7 @@ def test_check_torrent_file_ignore_regex(p, app_config, caplog):
 class TestTryGetTorrentContentForMagnet(object):
     """Tests for _try_get_torrent_content_for_magnet."""
 
-    MAGNET_URL = 'magnet:?xt=urn:btih:AB123456789012345678901234567890ABCDEF01&dn=Test.Show.S01E01'
+    MAGNET_URL = 'magnet:?xt=urn:btih:AB12345678901234567890123456789012345678&dn=Test.Show.S01E01'
 
     def _make_mock_result(self, url=None, bt_cache_urls=None, content_response=None):
         """Create a mock search result with a provider."""
@@ -331,7 +331,7 @@ class TestTryGetTorrentContentForMagnet(object):
         # Verify session.get_content was called with a formatted URL containing the hash
         call_args = result.provider.session.get_content.call_args
         called_url = call_args[0][0]
-        assert 'AB123456789012345678901234567890ABCDEF01' in called_url
+        assert 'AB12345678901234567890123456789012345678' in called_url
 
     def test_no_info_hash_in_magnet(self):
         """Magnet without info hash returns None."""
