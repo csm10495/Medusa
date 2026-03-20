@@ -210,11 +210,50 @@ class TorrentProvider(GenericProvider):
 
         return False
 
+    def _fetch_torrent_metadata_from_magnet(self, magnet_uri):
+        """
+        Attempt to fetch .torrent metadata from a magnet link using bt_cache services.
+
+        :param magnet_uri: Magnet URI string
+        :returns: Decoded torrent metadata dictionary or None
+        """
+        info_hash = self._get_info_from_magnet(magnet_uri)
+        if not info_hash:
+            return None
+
+        # Try each bt_cache URL to fetch the torrent metadata
+        for cache_url_template in self.bt_cache_urls:
+            try:
+                cache_url = cache_url_template.format(info_hash=info_hash)
+                log.debug('Attempting to fetch torrent metadata from: {url}', {'url': cache_url})
+
+                # Use the provider's session to fetch the torrent file
+                response = self.session.get(cache_url, timeout=10)
+                if response and response.ok and response.content:
+                    try:
+                        meta_info = BENCODE.decode(response.content, allow_extra_data=True)
+                        if 'info' in meta_info and meta_info['info']:
+                            log.debug('Successfully fetched metadata from {url}', {'url': cache_url})
+                            return meta_info
+                    except BencodeDecodeError:
+                        # Try next cache URL
+                        continue
+            except Exception as error:
+                log.debug('Failed to fetch from {url}: {error}',
+                          {'url': cache_url_template, 'error': error})
+                continue
+
+        log.debug('Could not fetch torrent metadata from any bt_cache service for magnet')
+        return None
+
     def _verify_magnet(self, file_path):
         """
-        Validate Magnet file.
+        Validate Magnet file and check against ignore regex patterns.
 
         Check if the Magnet file exists and has a valid info_hash.
+        If IGNORE_TORRENTS_WITH_FILE_REGEX is configured, attempts to fetch
+        torrent metadata to check file names against patterns.
+
         :param file_path: Absolute path to the Magnet file.
         :returns: True or False
         """
@@ -225,9 +264,48 @@ class TorrentProvider(GenericProvider):
         with open(file_path, 'r', encoding='utf-8') as fp:
             magnet_uri = fp.read()
 
-        if self._get_info_from_magnet(magnet_uri):
-            return True
-        return False
+        if not self._get_info_from_magnet(magnet_uri):
+            return False
+
+        # Check if any files in the torrent match the ignore regex patterns
+        # For magnets, we need to fetch metadata first
+        if app.IGNORE_TORRENTS_WITH_FILE_REGEX:
+            meta_info = self._fetch_torrent_metadata_from_magnet(magnet_uri)
+
+            if meta_info:
+                # We successfully fetched metadata, check file patterns
+                torrent_files = self._get_torrent_files_list(meta_info)
+
+                for regex_pattern in app.IGNORE_TORRENTS_WITH_FILE_REGEX:
+                    if not regex_pattern:  # Skip empty patterns
+                        continue
+
+                    try:
+                        compiled_pattern = re.compile(regex_pattern)
+                        for file_name in torrent_files:
+                            if compiled_pattern.search(file_name):
+                                log.debug(
+                                    'Ignoring magnet {magnet} - file {file} matches ignore pattern: {pattern}',
+                                    {'magnet': os.path.basename(file_path), 'file': file_name, 'pattern': regex_pattern}
+                                )
+                                remove_file_failed(file_path)
+                                return False
+                    except re.error as error:
+                        log.warning(
+                            'Invalid regex pattern {pattern}: {error}',
+                            {'pattern': regex_pattern, 'error': error}
+                        )
+                        continue
+            else:
+                # Could not fetch metadata - log warning but allow the magnet
+                # This prevents breaking magnets when cache services are unavailable
+                log.info(
+                    'Could not fetch metadata for magnet {magnet} to check file patterns. '
+                    'Allowing magnet to proceed.',
+                    {'magnet': os.path.basename(file_path)}
+                )
+
+        return True
 
     @staticmethod
     def _get_torrent_name_from_magnet(magnet_uri):
