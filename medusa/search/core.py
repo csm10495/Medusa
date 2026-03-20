@@ -113,14 +113,18 @@ def _get_torrent_file_list(content):
 
     try:
         torrent_bdecode = BENCODE.decode(content, allow_extra_data=True)
-        info = torrent_bdecode.get(b'info', {})
     except (BencodeDecodeError, Exception):
         return []
 
-    files = []
-    if b'files' in info:
-        for f in info[b'files']:
-            path_parts = f.get(b'path', [])
+    # The monkeypatched BENCODE uses encoding='utf-8', so decoded keys/values
+    # are strings. Support both bytes and string keys for robustness.
+    info = torrent_bdecode.get('info') or torrent_bdecode.get(b'info') or {}
+
+    files_list = info.get('files') or info.get(b'files')
+    if files_list:
+        files = []
+        for f in files_list:
+            path_parts = f.get('path') or f.get(b'path') or []
             decoded_parts = []
             for part in path_parts:
                 if isinstance(part, bytes):
@@ -129,13 +133,15 @@ def _get_torrent_file_list(content):
                     decoded_parts.append(str(part))
             if decoded_parts:
                 files.append(os.path.join(*decoded_parts))
-    elif b'name' in info:
-        name = info[b'name']
+        return files
+
+    name = info.get('name') or info.get(b'name')
+    if name:
         if isinstance(name, bytes):
             name = name.decode('utf-8', errors='replace')
-        files.append(name)
+        return [name]
 
-    return files
+    return []
 
 
 def _check_torrent_file_ignore_regex(content, result_name):
